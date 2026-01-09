@@ -1,0 +1,167 @@
+package main
+
+import (
+	"math"
+	"math/bits"
+	"sort"
+)
+
+func minMergeCost1(lists [][]int) int64 {
+	u := 1 << len(lists)
+	sorted := make([][]int, u)
+	for i, a := range lists {
+		highBit := 1 << i
+		for s, b := range sorted[:highBit] {
+			sorted[highBit|s] = merge(a, b)
+		}
+	}
+
+	f := make([]int, u)
+	for i, a := range sorted {
+		if i&(i-1) == 0 {
+			continue // f[i] = 0
+		}
+		f[i] = math.MaxInt
+		for j := i & (i - 1); j > i^j; j = (j - 1) & i {
+			k := i ^ j
+			medJ := sorted[j][(len(sorted[j])-1)/2]
+			medK := sorted[k][(len(sorted[k])-1)/2]
+			f[i] = min(f[i], f[j]+f[k]+abs(medJ-medK))
+		}
+		f[i] += len(a)
+	}
+	return int64(f[u-1])
+}
+
+func minMergeCost2(lists [][]int) int64 {
+	u := 1 << len(lists)
+	sumLen := make([]int, u)
+	for i, a := range lists {
+		highBit := 1 << i
+		for s, sl := range sumLen[:highBit] {
+			sumLen[highBit|s] = sl + len(a)
+		}
+	}
+
+	median := make([]int, u)
+	for mask, sl := range sumLen {
+		k := (sl + 1) / 2
+		left, right := int(-1e9), int(1e9)
+		median[mask] = left + sort.Search(right-left, func(med int) bool {
+			med += left
+			cnt := 0
+			for s := uint32(mask); s > 0; s &= s - 1 {
+				i := bits.TrailingZeros32(s)
+				cnt += sort.SearchInts(lists[i], med+1)
+				if cnt >= k {
+					return true
+				}
+			}
+			return false
+		})
+	}
+
+	f := make([]int, u)
+	for i, sl := range sumLen {
+		if i&(i-1) == 0 {
+			continue
+		}
+		f[i] = math.MaxInt
+		for j := i & (i - 1); j > i^j; j = (j - 1) & i {
+			k := i ^ j
+			f[i] = min(f[i], f[j]+f[k]+abs(median[j]-median[k]))
+		}
+		f[i] += sl
+	}
+	return int64(f[u-1])
+}
+
+
+func merge(a, b []int) []int {
+	i, n := 0, len(a)
+	j, m := 0, len(b)
+	res := make([]int, 0, n+m)
+	for {
+		if i == n {
+			return append(res, b[j:]...)
+		}
+		if j == m {
+			return append(res, a[i:]...)
+		}
+		if a[i] < b[j] {
+			res = append(res, a[i])
+			i++
+		} else {
+			res = append(res, b[j])
+			j++
+		}
+	}
+}
+
+func calcSorted(lists [][]int) [][]int {
+	u := 1 << len(lists)
+	sorted := make([][]int, u)
+	for i, a := range lists {
+		highBit := 1 << i
+		for s, b := range sorted[:highBit] {
+			sorted[highBit|s] = merge(a, b)
+		}
+	}
+	return sorted
+}
+
+func findMedianSortedArrays(a, b []int) int {
+	if len(a) > len(b) {
+		a, b = b, a
+	}
+
+	m, n := len(a), len(b)
+	i := sort.Search(m, func(i int) bool {
+		j := (m+n+1)/2 - i - 2
+		return a[i] > b[j+1]
+	}) - 1
+
+	j := (m+n+1)/2 - i - 2
+	if i < 0 {
+		return b[j]
+	}
+	if j < 0 {
+		return a[i]
+	}
+	return max(a[i], b[j])
+}
+
+func minMergeCost(lists [][]int) int64 {
+	n := len(lists)
+	m := n / 2
+	sorted1 := calcSorted(lists[:m])
+	sorted2 := calcSorted(lists[m:])
+
+	u := 1 << n
+	half := 1<<m - 1
+	median := make([]int, u)
+	for i := 1; i < u; i++ {
+		median[i] = findMedianSortedArrays(sorted1[i&half], sorted2[i>>m])
+	}
+
+	f := make([]int, u)
+	for i := range f {
+		if i&(i-1) == 0 {
+			continue
+		}
+		f[i] = math.MaxInt
+		for j := i & (i - 1); j > i^j; j = (j - 1) & i {
+			k := i ^ j
+			f[i] = min(f[i], f[j]+f[k]+abs(median[j]-median[k]))
+		}
+		f[i] += len(sorted1[i&half]) + len(sorted2[i>>m])
+	}
+	return int64(f[u-1])
+}
+
+func abs(x int) int {
+	if x < 0 {
+		return -x
+	}
+	return x
+}
